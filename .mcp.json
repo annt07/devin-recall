@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "recall": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--quiet", "--project", "${PLUGIN_ROOT}", "recall", "mcp"]
+    }
+  }
+}

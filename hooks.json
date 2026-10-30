@@ -1,0 +1,80 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook SessionStart --via-plugin",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook UserPromptSubmit --via-plugin",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook Stop --via-plugin",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PreCompact": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook PreCompact --via-plugin",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PostCompaction": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook PostCompaction --via-plugin",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook SessionEnd --via-plugin",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "^(write|edit|multi_edit|apply_patch)$",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" recall hook PreToolUse --via-plugin",
+          "timeout": 5
+        }
+      ]
+    }
+  ]
+}

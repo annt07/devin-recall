@@ -1,0 +1,8 @@
+{
+  "name": "recall",
+  "version": "0.1.0",
+  "description": "Recall: automatic, per-repo, versioned wiki memory for Devin CLI",
+  "repository": "https://github.com/annt07/devin-recall",
+  "platforms": ["local"],
+  "keywords": ["memory", "wiki", "recall", "context"]
+}
