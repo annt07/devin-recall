@@ -215,6 +215,80 @@ def test_mcp_repo_root_uses_devin_project_dir(repo, monkeypatch):
     assert mcp_server._repo_root() == repo.resolve()
 
 
+# ---------- MCP: log.md and read-before-consume ----------
+
+def _raw(store_root, name, text="raw text"):
+    d = store_root / "raw"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / name
+    p.write_text(text, encoding="utf-8")
+    return f"raw/{name}"
+
+
+@pytest.fixture
+def mcp(repo, store, monkeypatch):
+    import recall.mcp_server as ms
+    monkeypatch.setenv("RECALL_REPO", str(repo))
+    ms._READ_RAW.clear()
+    return ms
+
+
+def test_get_log_md(mcp, store):
+    res = mcp.recall_get(path="log.md")
+    assert res["path"] == "log.md" and "text" in res
+
+
+def _page(sources=None):
+    return {"path": "pages/fact/x.md",
+            "front": {"title": "x", "type": "fact", "summary": "s", "confidence": "high",
+                      "sources": sources or ["src/a.py"]},
+            "body": "body"}
+
+
+def test_ingest_rejects_unread_consumed(mcp, store):
+    raw = _raw(store.root, "r1.md")
+    res = mcp.recall_ingest(pages=[_page()], session="s1", consumed=[raw])
+    assert "unread raw records" in res["error"] and raw in res["error"]
+
+
+def test_ingest_rejects_unread_cited(mcp, store):
+    raw = _raw(store.root, "r2.md")
+    res = mcp.recall_ingest(pages=[_page([raw])], session="s1")
+    assert raw in res["error"]
+
+
+def test_ingest_passes_after_recall_get(mcp, store):
+    raw = _raw(store.root, "r3.md")
+    mcp.recall_get(path=raw)
+    res = mcp.recall_ingest(pages=[_page([raw])], session="s1", consumed=[raw])
+    assert "error" not in res and res["accepted"] == ["pages/fact/x.md"]
+
+
+def test_ingest_names_only_unread(mcp, store):
+    read = _raw(store.root, "r4.md")
+    unread = _raw(store.root, "r5.md")
+    mcp.recall_get(path=read)
+    res = mcp.recall_ingest(pages=[_page()], session="s1", consumed=[read, unread])
+    assert unread in res["error"] and read not in res["error"]
+
+
+def test_server_restart_clears_read_set(mcp, store):
+    raw = _raw(store.root, "r6.md")
+    mcp.recall_get(path=raw)
+    mcp._READ_RAW.clear()  # a new MCP process starts empty
+    res = mcp.recall_ingest(pages=[_page()], session="s1", consumed=[raw])
+    assert "unread raw records" in res["error"]
+
+
+def test_ingest_reject_makes_no_commit(mcp, store):
+    from recall.history import History
+    raw = _raw(store.root, "r7.md")
+    before = History(store.root).log(limit=50)
+    res = mcp.recall_ingest(pages=[_page([raw])], session="s1", consumed=[raw])
+    assert "unread raw records" in res["error"]
+    assert len(History(store.root).log(limit=50)) == len(before)
+
+
 # ---------- uvx launcher env ----------
 
 def test_launcher_uvx_source_tool_installs(repo, monkeypatch, tmp_path):

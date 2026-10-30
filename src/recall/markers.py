@@ -10,9 +10,10 @@ OFF_MSG = "Recall is off: this folder is not a git repository."
 ENABLE_MSG = ("Recall is not enabled in this repo; if the user asks to enable recall, "
               "call the recall_enable MCP tool.")
 MISMATCH_PREFIX = "Memory is newer than the checked-out code; verify stale pages:"
-PENDING_MSG = "Pending raw records: {n}. Ingest them with recall_ingest."
+PENDING_MSG = ("Pending raw records: {n}. Open each with recall_get, "
+               "then ingest them with recall_ingest.")
 STOP_BLOCK_MSG = ("Recall: save durable learnings with recall_ingest (cite or consume {n} pending raw records). "
-                  "Then stop.")
+                  "Open each pending raw record with recall_get before you cite or consume it. Then stop.")
 NEAR_MSG = ("Recall: the context is {pct}% full ({tokens}/{limit} tokens, source {source}). "
             "Save durable learnings now with recall_ingest, before compaction.")
 URGENT_MSG = ("URGENT Recall: the context is over its limit ({pct}%, {tokens}/{limit} tokens, source {source}). "

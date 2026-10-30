@@ -16,6 +16,9 @@ from recall.runtime import Runtime, run_mcp, store_folder_correction
 mcp = _Server("recall")
 
 _TOP_FILES = ("index.md", "log.md", "SCHEMA.md", "eval.md")
+# Raw records this MCP process returned through recall_get: one server lives for one Devin
+# session, so the set is per-session. recall_ingest refuses to cite or consume unread raw.
+_READ_RAW: set[str] = set()
 _REL_RE = re.compile(r"(?:pages/[a-z]+/[\w.-]+\.md|raw/[\w.-]+\.md)")
 
 
@@ -80,6 +83,8 @@ def recall_get(path: str) -> dict:
     rel = _check_rel(path)
     if not (store.root / rel).is_file():
         raise ValueError(f"not found: {rel}")
+    if rel.startswith("raw/"):
+        _READ_RAW.add(rel)
     if rel.startswith("pages/"):
         front, body = store.read_page(rel)
         return {"path": rel, "front": front, "body": body}
@@ -98,6 +103,13 @@ def recall_ingest(pages: list[dict], session: str = "", trigger: str = "agent",
         if not isinstance(p, dict) or not isinstance(p.get("path"), str) or not isinstance(p.get("front", {}), dict):
             raise ValueError("pages: each item needs path (str), front (dict) and body (str)")
         changes.append(PageChange(p["path"], dict(p.get("front") or {}), str(p.get("body") or "")))
+    raw_refs = {str(c).replace("\\", "/").strip() for c in (consumed or [])}
+    for p in pages:
+        for src in (p.get("front") or {}).get("sources") or []:
+            raw_refs.add(str(src).replace("\\", "/").strip())
+    unread = sorted(r for r in raw_refs if r.startswith("raw/") and r not in _READ_RAW)
+    if unread:
+        raise ValueError(f"unread raw records: {', '.join(unread)}. Open them with recall_get first.")
     store = _open().store
     res = store.ingest(changes, Meta("ingest", str(session or ""), str(trigger or "agent")),
                        consumed=[str(c) for c in (consumed or [])])

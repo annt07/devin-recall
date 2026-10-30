@@ -20,6 +20,7 @@ Recall is the versioned wiki memory of this repo. Hooks inject its index and mat
 - Each page cites its sources: `raw/<file>.md`, a code path (`src/x.py` or `src/x.py:10-20`) or `commit:<sha>`.
 - Never save secrets, tokens, passwords or personal data.
 - Save with `recall_ingest`. For Seed raw records, pass `trigger="Seed"`.
+- Open each raw record with `recall_get` before you cite or consume it; `recall_ingest` rejects raw paths it has not read.
 
 ## Rules
 
