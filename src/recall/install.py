@@ -58,19 +58,18 @@ def _dev_project() -> Path | None:
 
 
 def _installed_tool_exe(tool: str, name: str) -> Path | None:
-    """The exe of a `uv tool install`-ed package: PATH first, then the uv tools dir."""
-    exe = shutil.which(name)
-    if exe:
-        return Path(exe).resolve()
+    """The exe of a `uv tool install`-ed package: the uv tools dir first, then PATH.
+
+    Under uvx the ephemeral env is on PATH, so PATH alone could return a prunable exe."""
     r = subprocess.run(["uv", "tool", "dir"], capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=GIT_TIMEOUT_S)
-    if r.returncode != 0:
-        return None
-    base = Path(r.stdout.strip()) / tool
-    for cand in (base / "Scripts" / f"{name}.exe", base / "bin" / name):
-        if cand.is_file():
-            return cand
-    return None
+    if r.returncode == 0 and r.stdout.strip():
+        base = Path(r.stdout.strip()) / tool
+        for cand in (base / "Scripts" / f"{name}.exe", base / "bin" / name):
+            if cand.is_file():
+                return cand
+    exe = shutil.which(name)
+    return Path(exe).resolve() if exe else None
 
 
 def _launcher(tool_project) -> list[str]:
