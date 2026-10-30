@@ -1,0 +1,17 @@
+{
+  "name": "devin-recall",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Recall: automatic, per-repo, versioned wiki memory for Devin CLI (npx launcher)",
+  "bin": {
+    "recall": "bin/recall.js"
+  },
+  "files": [
+    "bin/recall.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}
