@@ -57,6 +57,22 @@ def _dev_project() -> Path | None:
     return None
 
 
+def _installed_tool_exe(tool: str, name: str) -> Path | None:
+    """The exe of a `uv tool install`-ed package: PATH first, then the uv tools dir."""
+    exe = shutil.which(name)
+    if exe:
+        return Path(exe).resolve()
+    r = subprocess.run(["uv", "tool", "dir"], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=GIT_TIMEOUT_S)
+    if r.returncode != 0:
+        return None
+    base = Path(r.stdout.strip()) / tool
+    for cand in (base / "Scripts" / f"{name}.exe", base / "bin" / name):
+        if cand.is_file():
+            return cand
+    return None
+
+
 def _launcher(tool_project) -> list[str]:
     """argv prefix that starts `recall` from a hook or MCP client.
 
@@ -69,12 +85,21 @@ def _launcher(tool_project) -> list[str]:
                 "recall"]
     uvx_from = os.environ.get("RECALL_UVX_FROM")
     if uvx_from:
-        # Running under `uvx --from <src>` (e.g. the npx launcher): the ephemeral tool env can be
-        # garbage-collected, so hooks must re-resolve `recall` through uvx on every call.
-        uvx = shutil.which("uvx")
-        if uvx is None:
-            raise RuntimeError("`uvx` is not on PATH; it is needed for a uvx-based install")
-        return [str(Path(uvx).resolve()), "--from", uvx_from, "recall"]
+        # Running under `uvx --from <src>` (e.g. the npx launcher): uvx re-resolves a git
+        # source over the network on every call and the env can be pruned, so install the
+        # tool once and hook the stable executable.
+        uv = shutil.which("uv")
+        if uv is None:
+            raise RuntimeError("`uv` is not on PATH; it is needed for a uvx-based install")
+        r = subprocess.run([str(Path(uv).resolve()), "tool", "install", "--force", uvx_from],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(f"uv tool install {uvx_from} failed: {(r.stderr or '').strip()}")
+        exe = _installed_tool_exe("devin-recall", "recall")
+        if exe is None:
+            raise RuntimeError(f"uv tool install {uvx_from} did not leave a `recall` executable")
+        return [str(exe)]
     if _dev_project() is not None:
         return [sys.executable, "-m", "recall"]  # the checkout's own environment
     exe = shutil.which("recall")

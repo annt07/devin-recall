@@ -30,7 +30,7 @@ Recall stays off until you opt in per repo. In a repo without a store, the first
 npx github:annt07/devin-recall install <path-to-your-git-repo>
 ```
 
-This runs `recall install` through `uvx` and writes `uvx --from git+ssh://git@github.com/annt07/devin-recall.git recall ...` into the hook and MCP commands, so they keep working even after the uvx cache is cleaned. To use a different source (for example an https URL or a local checkout), set `RECALL_SOURCE` first.
+This runs `recall install` through `uvx`. The install then runs `uv tool install` once and writes the installed `recall` executable's absolute path into the hook and MCP commands — uvx would re-resolve the git source over the network on every call, so the tool install keeps hooks fast and offline. To use a different source (for example an https URL or a local checkout), set `RECALL_SOURCE` first.
 
 ### C) uv tool
 
@@ -95,6 +95,7 @@ The store is a git repo. `recall_show_at` shows the index or a page at any commi
 - **Hook timeouts:** hooks fail open — a slow or broken hook never blocks the session. Look in `errors.log` under the local data folder.
 - **`uv` / `uvx` missing:** install uv from https://docs.astral.sh/uv/getting-started/installation/ and rerun.
 - **Private repo:** the plugin and npx installs pull with your git credentials. Make sure `git clone` of the repo URL works first.
+- **`devin plugins install --local` fails with `symlinking ... privilege is not held` (os error 1314):** local installs link the source folder with a symlink, which needs Windows Developer Mode or an elevated shell. Git installs clone the plugin into the cache instead and are not affected; use the normal `devin plugins install annt07/devin-recall` or the npx/uv paths.
 - **Plugin and repo install together:** the plugin hooks detect Recall entries in `<repo>/.devin/config.local.json` and become a no-op, so hooks never run twice. Devin also keeps the first `recall` MCP server definition it sees per name; the repo-level server wins over the plugin one when both exist.
 - **Plugin hooks in a repo without a store:** everything is a silent no-op except SessionStart, which adds one "not enabled" line. `recall_enable` creates the store.
 

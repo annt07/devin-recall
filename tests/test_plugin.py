@@ -69,6 +69,14 @@ def test_mcp_json_server():
     assert "${PLUGIN_ROOT}" in " ".join(args)
 
 
+def test_plugin_root_ships_no_rules():
+    """The plugin root must not ship always-on rule files (Devin injects them everywhere);
+    the repo's contributor rules live in .devin/global_rules.md instead."""
+    for name in ("AGENTS.md", "AGENT.md", "agents.md", ".windsurfrules"):
+        assert not (PROJECT / name).exists(), name
+    assert (PROJECT / ".devin" / "global_rules.md").is_file()
+
+
 def test_plugin_skill_is_template_byte_identical():
     from importlib import resources
     template = (resources.files("recall") / "templates" / "skill" / "SKILL.md").read_bytes()
@@ -209,21 +217,57 @@ def test_mcp_repo_root_uses_devin_project_dir(repo, monkeypatch):
 
 # ---------- uvx launcher env ----------
 
-def test_launcher_uses_uvx_source(repo, monkeypatch, tmp_path):
-    """`recall install` under `uvx --from <src>` writes `uvx --from <src> recall` commands,
-    not the ephemeral interpreter path."""
+def test_launcher_uvx_source_tool_installs(repo, monkeypatch, tmp_path):
+    """`recall install` under `uvx --from <src>` runs `uv tool install <src>` once and hooks the
+    installed `recall` executable: uvx re-resolves a git source over the network on every call."""
+    import subprocess
+
+    import recall.install as ins
+    monkeypatch.setattr(ins, "_dev_project", lambda: None)
+    src = "git+ssh://git@example.com/o/r.git"
+    monkeypatch.setenv("RECALL_UVX_FROM", src)
+    uv = str((tmp_path / "uv").resolve())
+    exe = str((tmp_path / "bin" / "recall").resolve())
+    calls = []
+
+    real_run = subprocess.run
+
+    def fake_run(argv, **kw):
+        if argv[0] == "git":
+            return real_run(argv, **kw)
+        calls.append(argv)
+        if argv[1:3] == ["tool", "dir"]:
+            return subprocess.CompletedProcess(argv, 0, str(tmp_path / "tools"), "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(ins.subprocess, "run", fake_run)
+    monkeypatch.setattr(ins.shutil, "which", lambda name: {"uv": uv, "recall": exe}.get(name))
+    ins.install(repo)
+    assert calls[0][:4] == [uv, "tool", "install", "--force"] or calls[0][:3] == [uv, "tool", "install"]
+    assert src in calls[0]
+    hooks = json.loads((repo / ".devin" / "config.local.json").read_text(encoding="utf-8"))["hooks"]
+    cmd = _hook_commands(hooks["Stop"])[0]
+    assert cmd.startswith(f"{ins._q(exe)} hook Stop --repo ") and "--from" not in cmd
+    mcp = json.loads((repo / ".devin" / "mcp_config.local.json").read_text(encoding="utf-8"))
+    assert mcp["mcpServers"]["recall"]["command"] == exe
+    assert mcp["mcpServers"]["recall"]["args"] == ["mcp"]
+
+
+def test_launcher_uvx_source_install_failure(repo, monkeypatch, tmp_path):
+    import subprocess
+
     import recall.install as ins
     monkeypatch.setattr(ins, "_dev_project", lambda: None)
     monkeypatch.setenv("RECALL_UVX_FROM", "git+ssh://git@example.com/o/r.git")
-    uvx = str((tmp_path / "uvx").resolve())
-    monkeypatch.setattr(ins.shutil, "which", lambda name: uvx if name == "uvx" else None)
-    ins.install(repo)
-    hooks = json.loads((repo / ".devin" / "config.local.json").read_text(encoding="utf-8"))["hooks"]
-    cmd = _hook_commands(hooks["Stop"])[0]
-    assert "uvx" in cmd and "--from" in cmd and "git+ssh://git@example.com/o/r.git" in cmd
-    assert "recall hook Stop" in cmd
-    mcp = json.loads((repo / ".devin" / "mcp_config.local.json").read_text(encoding="utf-8"))
-    rec = mcp["mcpServers"]["recall"]
-    assert rec["command"] == uvx
-    assert rec["args"][:2] == ["--from", "git+ssh://git@example.com/o/r.git"]
-    assert rec["args"][-1] == "mcp"
+    uv = str((tmp_path / "uv").resolve())
+    monkeypatch.setattr(ins.shutil, "which", lambda name: uv if name == "uv" else None)
+    real_run = subprocess.run
+
+    def fake_run(argv, **kw):
+        if argv[0] == "git":
+            return real_run(argv, **kw)
+        return subprocess.CompletedProcess(argv, 1, "", "fetch failed")
+
+    monkeypatch.setattr(ins.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="uv tool install"):
+        ins.install(repo)
