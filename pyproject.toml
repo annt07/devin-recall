@@ -1,0 +1,33 @@
+[project]
+name = "devin-recall"
+version = "0.1.0"
+description = "Recall: automatic, per-repo, versioned wiki memory for Devin CLI"
+readme = "README.md"
+authors = [
+    { name = "Recall maintainers" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=2.3,<3",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+recall = "recall.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "recall"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+markers = ["slow: builds a wheel or starts subprocesses (deselect with -m 'not slow')"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
