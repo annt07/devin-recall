@@ -103,14 +103,16 @@ def recall_ingest(pages: list[dict], session: str = "", trigger: str = "agent",
         if not isinstance(p, dict) or not isinstance(p.get("path"), str) or not isinstance(p.get("front", {}), dict):
             raise ValueError("pages: each item needs path (str), front (dict) and body (str)")
         changes.append(PageChange(p["path"], dict(p.get("front") or {}), str(p.get("body") or "")))
+    rt = _open()
     raw_refs = {str(c).replace("\\", "/").strip() for c in (consumed or [])}
     for p in pages:
         for src in (p.get("front") or {}).get("sources") or []:
             raw_refs.add(str(src).replace("\\", "/").strip())
-    unread = sorted(r for r in raw_refs if r.startswith("raw/") and r not in _READ_RAW)
+    pending = set(rt.store.pending_raw(scan=rt.pages))
+    unread = sorted(r for r in raw_refs if r in pending and r not in _READ_RAW)
     if unread:
         raise ValueError(f"unread raw records: {', '.join(unread)}. Open them with recall_get first.")
-    store = _open().store
+    store = rt.store
     res = store.ingest(changes, Meta("ingest", str(session or ""), str(trigger or "agent")),
                        consumed=[str(c) for c in (consumed or [])])
     # No rebuild here: the next search sees the changed page fingerprint.

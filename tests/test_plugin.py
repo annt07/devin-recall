@@ -280,6 +280,20 @@ def test_server_restart_clears_read_set(mcp, store):
     assert "unread raw records" in res["error"]
 
 
+def test_ingest_update_with_old_citation_passes(mcp, store):
+    """A raw a page already cites is no longer pending: updating that page must not force
+    the agent to re-open the old record."""
+    raw = _raw(store.root, "r8.md")
+    mcp.recall_get(path=raw)
+    res = mcp.recall_ingest(pages=[_page([raw])], session="s1")
+    assert "error" not in res and res["accepted"] == ["pages/fact/x.md"]
+    mcp._READ_RAW.clear()  # as if the agent had never read it this session
+    updated = _page([raw])
+    updated["body"] = "updated body"
+    res = mcp.recall_ingest(pages=[updated], session="s1")
+    assert "error" not in res, res
+
+
 def test_ingest_reject_makes_no_commit(mcp, store):
     from recall.history import History
     raw = _raw(store.root, "r7.md")
