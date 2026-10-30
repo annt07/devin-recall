@@ -11,6 +11,8 @@ def main(argv: list[str] | None = None) -> int:
     h = sub.add_parser("hook", help="run a Devin hook")
     h.add_argument("event")
     h.add_argument("--repo", default=None)
+    h.add_argument("--via-plugin", action="store_true",
+                   help="hook call comes from the installed Devin plugin (opt-in per repo)")
     sub.add_parser("mcp", help="run the Recall MCP server (stdio); repo from RECALL_REPO or cwd")
     i = sub.add_parser("install", help="install Recall hooks, MCP config, Skill and store into a git repo")
     i.add_argument("repo")
@@ -35,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
             stdin_text = sys.stdin.buffer.read().decode("utf-8", errors="replace")
         except Exception:
             stdin_text = ""
-        res = run(args.event, stdin_text, args.repo)
+        res = run(args.event, stdin_text, args.repo, via_plugin=args.via_plugin)
         if res.stdout:
             sys.stdout.buffer.write(res.stdout.encode("utf-8"))
             sys.stdout.buffer.flush()

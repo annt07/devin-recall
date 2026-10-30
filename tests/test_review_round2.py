@@ -459,7 +459,7 @@ def test_mcp_stdio_initialize_and_list_tools(store):
                 await s.initialize()
                 return {t.name for t in (await s.list_tools()).tools}
     names = asyncio.run(asyncio.wait_for(go(), 60))
-    assert "recall_ingest" in names and len(names) == 11
+    assert "recall_ingest" in names and len(names) == 12
 
 
 # ---------- wheel contents ----------

@@ -6,7 +6,8 @@ import pytest
 from helpers import page
 
 TOOLS = {"recall_search", "recall_get", "recall_ingest", "recall_mark", "recall_lint", "recall_eval",
-         "recall_log", "recall_history", "recall_show_at", "recall_diff", "recall_revert"}
+         "recall_log", "recall_history", "recall_show_at", "recall_diff", "recall_revert",
+         "recall_enable"}
 P = "pages/fact/build-and-test.md"
 
 
@@ -22,7 +23,7 @@ def mcp_repo(store, monkeypatch, tmp_path):
     return store
 
 
-def test_list_tools_is_exactly_eleven():
+def test_list_tools_is_exactly_twelve():
     from recall.mcp_server import mcp
     names = {t.name for t in asyncio.run(mcp.list_tools())}
     assert names == TOOLS

@@ -1,4 +1,4 @@
-"""MCP adapter: 11 thin tools over Runtime (Store, History, LocalIndex), maintenance and eval."""
+"""MCP adapter: thin tools over Runtime (Store, History, LocalIndex), maintenance and eval."""
 from __future__ import annotations
 
 import functools
@@ -20,8 +20,9 @@ _REL_RE = re.compile(r"(?:pages/[a-z]+/[\w.-]+\.md|raw/[\w.-]+\.md)")
 
 
 def _repo_root() -> Path:
-    """RECALL_REPO, else the nearest folder with .git; a store folder resolves to its owner repo."""
-    env = os.environ.get("RECALL_REPO")
+    """RECALL_REPO, else DEVIN_PROJECT_DIR, else the nearest folder with .git;
+    a store folder resolves to its owner repo."""
+    env = os.environ.get("RECALL_REPO") or os.environ.get("DEVIN_PROJECT_DIR")
     if env:
         return store_folder_correction(Path(env).resolve())
     here = Path.cwd().resolve()
@@ -188,6 +189,14 @@ def recall_diff(ref_a: str, ref_b: str = "HEAD", page: str | None = None) -> dic
     store = _open().store
     rel = _check_rel(page) if page else None
     return {"a": ref_a, "b": ref_b, "diff": store.history.diff(ref_a, ref_b, rel)}
+
+
+@_tool
+def recall_enable() -> dict:
+    """Create the Recall store in this repo (Devin plugin opt-in). Idempotent; also excludes
+    `.devin/recall/` via .git/info/exclude. Refuses if that path is tracked by git."""
+    from recall.install import enable
+    return enable(_repo_root())
 
 
 @_tool

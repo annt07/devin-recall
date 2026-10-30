@@ -13,7 +13,7 @@ from pathlib import Path
 
 from recall.context_gauge import prompt_section
 from recall.maintenance import review_section
-from recall.markers import MISMATCH_PREFIX, OFF_MSG, PENDING_MSG, START_HINT
+from recall.markers import ENABLE_MSG, MISMATCH_PREFIX, OFF_MSG, PENDING_MSG, START_HINT
 from recall.markers import STOP_BLOCK_MSG as BLOCK_MSG
 from recall.paths import log_error
 from recall.runtime import HookResult, Runtime, run_hook, store_folder_correction
@@ -75,14 +75,37 @@ def _index_text(store) -> str:
     return f"{cut.rstrip()}\n{INDEX_TAIL}"
 
 
-def run(event: str, stdin_text: str, repo: str | None = None) -> HookResult:
-    return run_hook(None, f"hook {event}", lambda: _resolved(event, stdin_text, repo))
+def run(event: str, stdin_text: str, repo: str | None = None, via_plugin: bool = False) -> HookResult:
+    return run_hook(None, f"hook {event}", lambda: _resolved(event, stdin_text, repo, via_plugin))
 
 
-def _resolved(event: str, stdin_text: str, repo: str | None) -> HookResult:
+def _repo_install_present(root: Path) -> bool:
+    """A per-repo `recall install` already wired hooks into .devin/config.local.json."""
+    from recall.install import is_recall_entry
+    try:
+        data = json.loads((root / ".devin" / "config.local.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    hooks = data.get("hooks")
+    if not isinstance(hooks, dict):
+        return False
+    return any(is_recall_entry(e) for entries in hooks.values() if isinstance(entries, list)
+               for e in entries)
+
+
+def _resolved(event: str, stdin_text: str, repo: str | None, via_plugin: bool = False) -> HookResult:
     root = _repo_root(repo)
     if root is None:
-        return _context(event, OFF_MSG) if event == "SessionStart" else HookResult()
+        # The plugin copy stays silent outside git; the repo install explains itself once.
+        if event == "SessionStart" and not via_plugin:
+            return _context(event, OFF_MSG)
+        return HookResult()
+    if via_plugin:
+        if _repo_install_present(root):
+            return HookResult()  # the per-repo install owns these hooks: never run twice
+        if not (root / ".devin" / "recall").is_dir():
+            # Opt-in: only SessionStart says how to enable; every other event is a fast no-op.
+            return _context(event, ENABLE_MSG) if event == "SessionStart" else HookResult()
     return run_hook(root, f"hook {event}", lambda: _dispatch(event, stdin_text, root))
 
 

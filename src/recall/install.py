@@ -67,6 +67,14 @@ def _launcher(tool_project) -> list[str]:
             raise RuntimeError("`uv` is not on PATH; it is needed for --tool-project")
         return [str(Path(uv).resolve()), "run", "--frozen", "--project", str(Path(tool_project).resolve()),
                 "recall"]
+    uvx_from = os.environ.get("RECALL_UVX_FROM")
+    if uvx_from:
+        # Running under `uvx --from <src>` (e.g. the npx launcher): the ephemeral tool env can be
+        # garbage-collected, so hooks must re-resolve `recall` through uvx on every call.
+        uvx = shutil.which("uvx")
+        if uvx is None:
+            raise RuntimeError("`uvx` is not on PATH; it is needed for a uvx-based install")
+        return [str(Path(uvx).resolve()), "--from", uvx_from, "recall"]
     if _dev_project() is not None:
         return [sys.executable, "-m", "recall"]  # the checkout's own environment
     exe = shutil.which("recall")
@@ -75,7 +83,8 @@ def _launcher(tool_project) -> list[str]:
     return [str(Path(exe).resolve())]
 
 
-_LITERAL = frozenset({"run", "--frozen", "--project", "-m", "recall", "hook", "--repo", *HOOK_EVENTS})
+_LITERAL = frozenset({"run", "--frozen", "--project", "-m", "recall", "hook", "--repo", "--from",
+                      "--via-plugin", *HOOK_EVENTS})
 
 
 def _cmd(argv: list[str]) -> str:
@@ -104,7 +113,7 @@ def _dump(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
-def _is_recall_entry(entry) -> bool:
+def is_recall_entry(entry) -> bool:
     if not isinstance(entry, dict):
         return False
     hooks = entry.get("hooks")
@@ -124,7 +133,7 @@ def _merge_hooks(cfg: dict, launcher: list[str], repo: Path) -> dict:
             entry["matcher"] = WRITE_GUARD_MATCHER
         entry["hooks"] = [{"type": "command", "command": cmd, "timeout": 5 if ev in SHORT_TIMEOUT else 30}]
         existing = hooks.get(ev)
-        existing = [e for e in existing if not _is_recall_entry(e)] if isinstance(existing, list) else []
+        existing = [e for e in existing if not is_recall_entry(e)] if isinstance(existing, list) else []
         hooks[ev] = [*existing, entry]
     cfg["hooks"] = hooks
     return cfg
@@ -139,7 +148,7 @@ def _merge_mcp(cfg: dict, launcher: list[str], repo: Path) -> dict:
     return cfg
 
 
-def _add_excludes(repo: Path) -> None:
+def _add_excludes(repo: Path, entries: tuple = EXCLUDES) -> None:
     p = _git(repo, "rev-parse", "--git-path", "info/exclude")
     if p.returncode != 0 or not p.stdout.strip():
         raise RuntimeError(f"cannot find the git exclude file: {(p.stderr or '').strip()}")
@@ -147,7 +156,7 @@ def _add_excludes(repo: Path) -> None:
     if not path.is_absolute():
         path = repo / path
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
-    missing = [e for e in EXCLUDES if e not in lines]
+    missing = [e for e in entries if e not in lines]
     if missing:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8", newline="\n") as f:
@@ -183,3 +192,21 @@ def install(repo_root, tool_project=None) -> dict:
     _copy_skill(repo)
     Store(repo).init()
     return {"repo": str(repo), "launcher": launcher}
+
+
+def enable(repo_root) -> dict:
+    """Create the Recall store in a repo that uses the Devin plugin. Idempotent.
+
+    The plugin already provides hooks, the MCP server and the skill, so this only makes the
+    store and excludes `.devin/recall/` in `.git/info/exclude`. Nothing else is written."""
+    p = _git(Path(repo_root), "rev-parse", "--show-toplevel")
+    if p.returncode != 0 or not p.stdout.strip():
+        raise RuntimeError(f"not a git repo: {repo_root}")
+    repo = Path(p.stdout.strip()).resolve()
+    tracked = _git(repo, "ls-files", "--", ".devin/recall/").stdout.split()
+    if tracked:
+        raise RuntimeError(f"refusing to enable: these paths are tracked by git: {', '.join(tracked)}")
+    created = not (repo / ".devin" / "recall").exists()
+    _add_excludes(repo, (".devin/recall/",))
+    Store(repo).init()
+    return {"repo": str(repo), "created": created}
