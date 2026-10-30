@@ -18,15 +18,21 @@ CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT);
 
 
 class LocalIndex:
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, timeout: float = 5.0):
         self.dir = local_dir(repo_root)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.db = self.dir / "index.sqlite"
+        self._timeout = timeout
         with closing(self._conn()) as c, c:
             c.executescript(_SCHEMA)
 
     def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self.db), timeout=5.0)
+        # WAL: a writer no longer blocks readers, and it upgrades an existing DELETE-mode db in
+        # place. `timeout` is the busy timeout; hook callers pass a short one (see runtime.py).
+        c = sqlite3.connect(str(self.db), timeout=self._timeout)
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA synchronous=NORMAL")
+        return c
 
     def rebuild(self, store) -> None:
         rows = []

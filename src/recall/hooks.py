@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import time
 from pathlib import Path
@@ -16,7 +17,7 @@ from recall.maintenance import review_section
 from recall.markers import ENABLE_MSG, MISMATCH_PREFIX, OFF_MSG, PENDING_MSG, START_HINT
 from recall.markers import STOP_BLOCK_MSG as BLOCK_MSG
 from recall.paths import log_error
-from recall.runtime import HookResult, Runtime, run_hook, store_folder_correction
+from recall.runtime import HOOK_INDEX_TIMEOUT_S, HookResult, Runtime, run_hook, store_folder_correction
 from recall.seed import session_start_section
 
 MAX_PAGES = 3
@@ -112,7 +113,7 @@ def _resolved(event: str, stdin_text: str, repo: str | None, via_plugin: bool = 
 def _dispatch(event: str, stdin_text: str, root: Path) -> HookResult:
     from recall.store import LockBusy
     try:
-        rt = Runtime.open(root)
+        rt = Runtime.open(root, index_timeout=HOOK_INDEX_TIMEOUT_S)
     except LockBusy:
         return HookResult()  # another process holds the store; skip this event
     data = _payload(stdin_text)
@@ -121,6 +122,11 @@ def _dispatch(event: str, stdin_text: str, root: Path) -> HookResult:
     if event not in ("PreToolUse", "SessionEnd") and (sid := _session(data)):
         try:
             rt.begin_hook(sid, time.time())
+        except sqlite3.OperationalError as e:
+            # The shared index is busy (a concurrent hook/Seed write): everything left in this
+            # event hits the same lock, so log it and give up fast inside the hook budget.
+            log_error(root, e)
+            return HookResult()
         except Exception as e:  # the last-seen time must never stop the event
             log_error(root, e)
     handler = _HANDLERS.get(event)

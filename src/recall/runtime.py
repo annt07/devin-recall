@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,8 @@ from recall.store import LockBusy, Store
 
 # MCP error mapping (unchanged): these give "<Type>: <masked message>", others an internal error.
 EXPECTED = (RefError, LockBusy, GitError, ValueError, RuntimeError, KeyError, TypeError)
+# Hook calls get seconds at most; a hook may never wait on a busy index.
+HOOK_INDEX_TIMEOUT_S = 0.5
 _SECRET_RE = re.compile(r"(?i)((?:token|secret|password|passwd|api[_-]?key|authorization|bearer)\s*[:=]?\s*)\S+")
 _URL_CRED_RE = re.compile(r"(\w+://)[^/@\s]+@")
 
@@ -57,6 +60,10 @@ def run_mcp(fn, log_root) -> dict:
     (under `log_root()`, or the fallback folder when that fails) and return a generic error."""
     try:
         return fn()
+    except sqlite3.OperationalError as e:
+        # The local index is shared with concurrent hooks; a busy index is the same
+        # "busy, try again" the agent already gets for the store lock.
+        return {"error": f"LockBusy: {safe_msg(e)}"}
     except EXPECTED as e:
         return {"error": f"{type(e).__name__}: {safe_msg(e)}"}
     except Exception as e:  # noqa: BLE001 - a tool never crashes the server
@@ -78,26 +85,27 @@ def run_hook(root, label: str, fn) -> HookResult:
 
 
 class Runtime:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, index_timeout: float = 5.0):
         self.store = store
+        self._index_timeout = index_timeout
         self._local: LocalIndex | None = None
         self._state: SessionState | None = None
         self._scan: list[tuple[str, dict, str]] | None = None
         self._scan_gen = -1
 
     @classmethod
-    def open(cls, repo_root) -> "Runtime":
+    def open(cls, repo_root, index_timeout: float = 5.0) -> "Runtime":
         """Open the store (file checks only when it exists; may raise LockBusy on first init)."""
         store = Store(repo_root)
         store.init()
-        return cls(store)
+        return cls(store, index_timeout)
 
     # ---------- local index and state ----------
     @property
     def local(self) -> LocalIndex:
         """The LocalIndex as it is (no freshness check): usage counters, injected rows, state."""
         if self._local is None:
-            self._local = LocalIndex(self.store.repo_root)
+            self._local = LocalIndex(self.store.repo_root, timeout=self._index_timeout)
         return self._local
 
     @property
